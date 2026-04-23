@@ -5,6 +5,8 @@ struct EditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var imageScale: CGFloat = 1
     @State private var lastImageScale: CGFloat = 1
+    @State private var imageOffset: CGSize = .zero
+    @State private var lastImageOffset: CGSize = .zero
 
     var body: some View {
         TabView(selection: $viewModel.selectedTool) {
@@ -36,27 +38,111 @@ struct EditorView: View {
 
     private var editorImageLayer: some View {
         GeometryReader { geometry in
+            let viewportSize = geometry.size
+            let baseImageSize = fittedImageSize(in: viewportSize)
+
             ZStack {
                 Image(uiImage: viewModel.editorImage.image)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .frame(width: viewportSize.width, height: viewportSize.height)
                     .scaleEffect(imageScale)
-                    .gesture(imageMagnificationGesture)
+                    .offset(imageOffset)
+                    .gesture(imageInteractionGesture(baseImageSize: baseImageSize, viewportSize: viewportSize))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private var imageMagnificationGesture: some Gesture {
+    private func imageInteractionGesture(baseImageSize: CGSize, viewportSize: CGSize) -> some Gesture {
+        imageMagnificationGesture(baseImageSize: baseImageSize, viewportSize: viewportSize)
+            .simultaneously(with: imageDragGesture(baseImageSize: baseImageSize, viewportSize: viewportSize))
+    }
+
+    private func imageMagnificationGesture(baseImageSize: CGSize, viewportSize: CGSize) -> some Gesture {
         MagnifyGesture()
             .onChanged { value in
                 let nextScale = lastImageScale * value.magnification
                 imageScale = min(max(nextScale, 1), 4)
+                imageOffset = clampedOffset(
+                    imageOffset,
+                    baseImageSize: baseImageSize,
+                    viewportSize: viewportSize,
+                    scale: imageScale
+                )
             }
             .onEnded { _ in
                 lastImageScale = imageScale
+                imageOffset = clampedOffset(
+                    imageOffset,
+                    baseImageSize: baseImageSize,
+                    viewportSize: viewportSize,
+                    scale: imageScale
+                )
+                lastImageOffset = imageOffset
             }
+    }
+
+    private func imageDragGesture(baseImageSize: CGSize, viewportSize: CGSize) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                let proposedOffset = CGSize(
+                    width: lastImageOffset.width + value.translation.width,
+                    height: lastImageOffset.height + value.translation.height
+                )
+                imageOffset = clampedOffset(
+                    proposedOffset,
+                    baseImageSize: baseImageSize,
+                    viewportSize: viewportSize,
+                    scale: imageScale
+                )
+            }
+            .onEnded { _ in
+                imageOffset = clampedOffset(
+                    imageOffset,
+                    baseImageSize: baseImageSize,
+                    viewportSize: viewportSize,
+                    scale: imageScale
+                )
+                lastImageOffset = imageOffset
+            }
+    }
+
+    private func fittedImageSize(in viewportSize: CGSize) -> CGSize {
+        let imageSize = viewModel.editorImage.image.size
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return viewportSize
+        }
+
+        let imageAspectRatio = imageSize.width / imageSize.height
+        let viewportAspectRatio = viewportSize.width / viewportSize.height
+
+        if imageAspectRatio > viewportAspectRatio {
+            return CGSize(width: viewportSize.width, height: viewportSize.width / imageAspectRatio)
+        } else {
+            return CGSize(width: viewportSize.height * imageAspectRatio, height: viewportSize.height)
+        }
+    }
+
+    private func clampedOffset(
+        _ proposedOffset: CGSize,
+        baseImageSize: CGSize,
+        viewportSize: CGSize,
+        scale: CGFloat
+    ) -> CGSize {
+        guard scale > 1 else {
+            return .zero
+        }
+
+        let scaledWidth = baseImageSize.width * scale
+        let scaledHeight = baseImageSize.height * scale
+        let horizontalLimit = max((scaledWidth - viewportSize.width) / 2, 0)
+        let verticalLimit = max((scaledHeight - viewportSize.height) / 2, 0)
+
+        return CGSize(
+            width: min(max(proposedOffset.width, -horizontalLimit), horizontalLimit),
+            height: min(max(proposedOffset.height, -verticalLimit), verticalLimit)
+        )
     }
 
     private var header: some View {

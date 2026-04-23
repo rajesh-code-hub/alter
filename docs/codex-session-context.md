@@ -85,6 +85,7 @@ Use this file to restore the important project context for future Codex sessions
 
 - The main editor should follow the exported HTML layout with a full-bleed image viewport.
 - The editor image should handle portrait and landscape assets non-destructively using fit-style scaling instead of cropping.
+- The editor image supports pinch zoom plus drag-to-pan while zoomed, with movement clamped to the visible image bounds.
 - The editor canvas background should stay a unified theme color behind any unused image space.
 - The compare pill and tool belt stay pinned at the bottom as a static bottom sheet.
 - The bottom tool belt should not scroll vertically with the image content.
